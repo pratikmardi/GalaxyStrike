@@ -5,378 +5,232 @@ import android.graphics.*
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
-import kotlin.random.Random
+import kotlin.math.max
+import kotlin.math.min
 
 class GameView(context: Context) : View(context) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    private var playerX = 0.5f
+    private var playerX = 0f
+    private var playerY = 0f
+
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+
     private var score = 0
-    private var health = 3
+    private var lives = 3
 
     private var gameOver = false
-    private var dragging = false
 
-    private var lastShot = 0L
-    private var lastSpawn = 0L
-
-    private val enemies = mutableListOf<Enemy>()
     private val bullets = mutableListOf<Bullet>()
+    private val enemies = mutableListOf<Enemy>()
+    private val stars = mutableListOf<Star>()
     private val explosions = mutableListOf<Explosion>()
 
-    private val stars = MutableList(120) {
-        Star(
-            Random.nextFloat(),
-            Random.nextFloat(),
-            Random.nextFloat() * 2f + 1f
-        )
-    }
+    private var lastEnemyTime = 0L
+    private var lastBulletTime = 0L
 
-    private var playerBitmap: Bitmap? = null
-    private var alienBitmap: Bitmap? = null
-    private var backgroundBitmap: Bitmap? = null
-
-    data class Enemy(
-        var x: Float,
-        var y: Float,
-        var speed: Float,
-        var size: Float
-    )
-
-    data class Bullet(
-        var x: Float,
-        var y: Float,
-        var speed: Float
-    )
-
-    data class Explosion(
-        var x: Float,
-        var y: Float,
-        var life: Int = 20
-    )
-
-    data class Star(
-        var x: Float,
-        var y: Float,
-        var speed: Float
-    )
+    private val random = java.util.Random()
 
     init {
-        loadAssets()
-    }
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
 
-    private fun loadAssets() {
-
-        try {
-            playerBitmap =
-                BitmapFactory.decodeStream(
-                    context.assets.open("player_ship.png")
+        for (i in 0 until 80) {
+            stars.add(
+                Star(
+                    random.nextFloat(),
+                    random.nextFloat(),
+                    1f + random.nextFloat() * 4f
                 )
-        } catch (_: Exception) {
-            playerBitmap = null
-        }
-
-        try {
-            alienBitmap =
-                BitmapFactory.decodeStream(
-                    context.assets.open("alien_ship.png")
-                )
-        } catch (_: Exception) {
-            alienBitmap = null
-        }
-
-        try {
-            backgroundBitmap =
-                BitmapFactory.decodeStream(
-                    context.assets.open("space_background.jpg")
-                )
-        } catch (_: Exception) {
-            backgroundBitmap = null
+            )
         }
     }
 
     override fun onDraw(canvas: Canvas) {
-
         super.onDraw(canvas)
 
-        drawBackground(canvas)
-        updateGame()
+        // Space background
+        canvas.drawColor(Color.rgb(3, 5, 20))
 
-        drawEnemies(canvas)
-        drawBullets(canvas)
-        drawExplosions(canvas)
+        drawStars(canvas)
+
+        if (playerX == 0f) {
+            playerX = width / 2f
+            playerY = height * 0.82f
+        }
+
+        if (!gameOver) {
+            updateGame()
+        }
+
         drawPlayer(canvas)
+        drawBullets(canvas)
+        drawEnemies(canvas)
+        drawExplosions(canvas)
         drawHud(canvas)
 
         if (gameOver) {
             drawGameOver(canvas)
         }
 
-        postInvalidateOnAnimation()
+        postInvalidateDelayed(16)
     }
 
-    private fun drawBackground(canvas: Canvas) {
+    private fun drawStars(canvas: Canvas) {
+        paint.color = Color.WHITE
 
-        if (backgroundBitmap != null) {
+        for (star in stars) {
+            val x = star.x * width
+            val y = star.y * height
 
-            val src = Rect(
-                0,
-                0,
-                backgroundBitmap!!.width,
-                backgroundBitmap!!.height
-            )
+            paint.alpha = (100 + star.size * 35).toInt().coerceIn(80, 255)
 
-            val dst = Rect(
-                0,
-                0,
-                width,
-                height
-            )
-
-            canvas.drawBitmap(
-                backgroundBitmap!!,
-                src,
-                dst,
+            canvas.drawCircle(
+                x,
+                y,
+                star.size,
                 paint
             )
-
-        } else {
-
-            canvas.drawColor(
-                Color.rgb(3, 6, 20)
-            )
-
-            paint.color = Color.WHITE
-
-            stars.forEach {
-
-                it.y += it.speed * 0.001f
-
-                if (it.y > 1f) {
-                    it.y = 0f
-                    it.x = Random.nextFloat()
-                }
-
-                canvas.drawCircle(
-                    it.x * width,
-                    it.y * height,
-                    it.speed,
-                    paint
-                )
-            }
         }
+
+        paint.alpha = 255
     }
 
     private fun drawPlayer(canvas: Canvas) {
+        val path = Path()
 
-        val x = playerX * width
-        val y = height * 0.87f
+        path.moveTo(playerX, playerY - 55f)
+        path.lineTo(playerX - 38f, playerY + 35f)
+        path.lineTo(playerX - 12f, playerY + 25f)
+        path.lineTo(playerX, playerY + 48f)
+        path.lineTo(playerX + 12f, playerY + 25f)
+        path.lineTo(playerX + 38f, playerY + 35f)
+        path.close()
 
-        if (playerBitmap != null) {
+        paint.color = Color.CYAN
+        paint.style = Paint.Style.FILL
 
-            val size = width * 0.18f
+        canvas.drawPath(path, paint)
 
-            val dst = RectF(
-                x - size / 2,
-                y - size / 2,
-                x + size / 2,
-                y + size / 2
-            )
+        paint.color = Color.WHITE
 
-            canvas.drawBitmap(
-                playerBitmap!!,
-                null,
-                dst,
-                paint
-            )
+        val cockpit = Path()
+        cockpit.moveTo(playerX, playerY - 35f)
+        cockpit.lineTo(playerX - 10f, playerY + 5f)
+        cockpit.lineTo(playerX + 10f, playerY + 5f)
+        cockpit.close()
 
-        } else {
+        canvas.drawPath(cockpit, paint)
 
-            paint.color = Color.CYAN
+        // Engine flames
+        paint.color = Color.YELLOW
 
-            val path = Path()
+        canvas.drawCircle(playerX - 17f, playerY + 38f, 7f, paint)
+        canvas.drawCircle(playerX + 17f, playerY + 38f, 7f, paint)
+    }
 
-            path.moveTo(
-                x,
-                y - 45
-            )
+    private fun drawBullets(canvas: Canvas) {
+        paint.color = Color.YELLOW
 
-            path.lineTo(
-                x - 32,
-                y + 30
-            )
-
-            path.lineTo(
-                x,
-                y + 15
-            )
-
-            path.lineTo(
-                x + 32,
-                y + 30
-            )
-
-            path.close()
-
-            canvas.drawPath(
-                path,
+        for (bullet in bullets) {
+            canvas.drawRoundRect(
+                bullet.x - 4f,
+                bullet.y - 15f,
+                bullet.x + 4f,
+                bullet.y + 15f,
+                5f,
+                5f,
                 paint
             )
         }
     }
 
     private fun drawEnemies(canvas: Canvas) {
+        for (enemy in enemies) {
+            paint.color = Color.RED
 
-        enemies.forEach {
+            canvas.drawCircle(
+                enemy.x,
+                enemy.y,
+                enemy.radius,
+                paint
+            )
 
-            val x = it.x * width
-            val y = it.y * height
+            paint.color = Color.rgb(255, 120, 0)
 
-            if (alienBitmap != null) {
+            canvas.drawCircle(
+                enemy.x,
+                enemy.y,
+                enemy.radius * 0.45f,
+                paint
+            )
 
-                val size =
-                    it.size * width * 3f
+            paint.color = Color.WHITE
 
-                val dst = RectF(
-                    x - size / 2,
-                    y - size / 2,
-                    x + size / 2,
-                    y + size / 2
-                )
+            canvas.drawCircle(
+                enemy.x - enemy.radius * 0.3f,
+                enemy.y - enemy.radius * 0.15f,
+                4f,
+                paint
+            )
 
-                canvas.drawBitmap(
-                    alienBitmap!!,
-                    null,
-                    dst,
-                    paint
-                )
-
-            } else {
-
-                paint.color =
-                    Color.rgb(
-                        210,
-                        70,
-                        255
-                    )
-
-                canvas.drawCircle(
-                    x,
-                    y,
-                    it.size * width,
-                    paint
-                )
-
-                paint.color = Color.BLACK
-
-                canvas.drawCircle(
-                    x - 8,
-                    y - 3,
-                    4f,
-                    paint
-                )
-
-                canvas.drawCircle(
-                    x + 8,
-                    y - 3,
-                    4f,
-                    paint
-                )
-            }
-        }
-    }
-
-    private fun drawBullets(canvas: Canvas) {
-
-        paint.color = Color.YELLOW
-
-        bullets.forEach {
-
-            val x = it.x * width
-            val y = it.y * height
-
-            canvas.drawRoundRect(
-                x - 4,
-                y - 18,
-                x + 4,
-                y + 18,
-                5f,
-                5f,
+            canvas.drawCircle(
+                enemy.x + enemy.radius * 0.3f,
+                enemy.y - enemy.radius * 0.15f,
+                4f,
                 paint
             )
         }
     }
 
     private fun drawExplosions(canvas: Canvas) {
-
-        explosions.forEach {
-
-            val radius =
-                (20 - it.life) * 5f
-
-            paint.color =
-                Color.argb(
-                    (it.life * 10).coerceAtMost(255),
-                    255,
-                    140,
-                    20
-                )
+        for (explosion in explosions) {
+            paint.color = Color.YELLOW
+            paint.alpha = explosion.alpha
 
             canvas.drawCircle(
-                it.x * width,
-                it.y * height,
-                radius,
+                explosion.x,
+                explosion.y,
+                explosion.radius,
                 paint
             )
 
-            it.life--
+            paint.color = Color.RED
+
+            canvas.drawCircle(
+                explosion.x,
+                explosion.y,
+                explosion.radius * 0.55f,
+                paint
+            )
         }
 
-        explosions.removeAll {
-            it.life <= 0
-        }
+        paint.alpha = 255
     }
 
     private fun drawHud(canvas: Canvas) {
-
-        paint.color = Color.WHITE
-        paint.textSize = 28f
-        paint.typeface =
-            Typeface.DEFAULT_BOLD
+        textPaint.color = Color.WHITE
+        textPaint.textSize = 42f
 
         canvas.drawText(
-            "SCORE  $score",
-            24f,
-            42f,
-            paint
+            "SCORE: $score",
+            30f,
+            55f,
+            textPaint
         )
 
-        paint.color =
-            Color.rgb(
-                255,
-                80,
-                80
-            )
-
         canvas.drawText(
-            "♥".repeat(health),
-            width - 125f,
-            42f,
-            paint
+            "LIVES: $lives",
+            width - 190f,
+            55f,
+            textPaint
         )
     }
 
     private fun drawGameOver(canvas: Canvas) {
-
-        paint.color =
-            Color.argb(
-                220,
-                0,
-                0,
-                0
-            )
-
+        paint.color = Color.argb(190, 0, 0, 0)
         canvas.drawRect(
             0f,
             0f,
@@ -385,198 +239,197 @@ class GameView(context: Context) : View(context) {
             paint
         )
 
-        paint.textAlign =
-            Paint.Align.CENTER
+        textPaint.textAlign = Paint.Align.CENTER
 
-        paint.color = Color.CYAN
-        paint.textSize = 55f
+        textPaint.color = Color.RED
+        textPaint.textSize = 80f
 
         canvas.drawText(
             "GAME OVER",
             width / 2f,
-            height / 2f - 50,
-            paint
+            height / 2f - 40f,
+            textPaint
         )
 
-        paint.color = Color.WHITE
-        paint.textSize = 28f
+        textPaint.color = Color.WHITE
+        textPaint.textSize = 42f
 
         canvas.drawText(
-            "SCORE: $score",
+            "Score: $score",
             width / 2f,
-            height / 2f + 5,
-            paint
+            height / 2f + 35f,
+            textPaint
         )
 
-        paint.color = Color.YELLOW
+        textPaint.textSize = 32f
 
         canvas.drawText(
-            "TAP TO RESTART",
+            "Tap to restart",
             width / 2f,
-            height / 2f + 65,
-            paint
+            height / 2f + 95f,
+            textPaint
         )
 
-        paint.textAlign =
-            Paint.Align.LEFT
+        textPaint.textAlign = Paint.Align.LEFT
     }
 
     private fun updateGame() {
+        val now = System.currentTimeMillis()
 
-        val now =
-            System.currentTimeMillis()
-
-        if (!gameOver) {
-
-            if (now - lastSpawn > 600) {
-
-                enemies.add(
-                    Enemy(
-                        Random.nextFloat()
-                            .coerceIn(
-                                0.08f,
-                                0.92f
-                            ),
-                        -0.08f,
-                        0.00025f +
-                                Random.nextFloat()
-                                * 0.0002f,
-                        0.06f
-                    )
+        // Automatic shooting
+        if (now - lastBulletTime > 350) {
+            bullets.add(
+                Bullet(
+                    playerX,
+                    playerY - 60f
                 )
+            )
 
-                lastSpawn = now
-            }
+            lastBulletTime = now
+        }
 
-            if (now - lastShot > 160) {
-
-                bullets.add(
-                    Bullet(
-                        playerX,
-                        0.84f,
-                        0.0015f
-                    )
+        // Spawn enemies
+        if (now - lastEnemyTime > 800) {
+            enemies.add(
+                Enemy(
+                    random.nextFloat() * (width - 100f) + 50f,
+                    -60f,
+                    28f + random.nextFloat() * 12f,
+                    5f + random.nextFloat() * 4f
                 )
+            )
 
-                lastShot = now
+            lastEnemyTime = now
+        }
+
+        // Move bullets
+        val bulletIterator = bullets.iterator()
+
+        while (bulletIterator.hasNext()) {
+            val bullet = bulletIterator.next()
+
+            bullet.y -= 18f
+
+            if (bullet.y < -30f) {
+                bulletIterator.remove()
             }
         }
 
-        bullets.forEach {
-            it.y -= it.speed * 16f
-        }
+        // Move enemies
+        val enemyIterator = enemies.iterator()
 
-        bullets.removeAll {
-            it.y < -0.1f
-        }
+        while (enemyIterator.hasNext()) {
+            val enemy = enemyIterator.next()
 
-        enemies.forEach {
-            it.y += it.speed * 16f
-        }
+            enemy.y += enemy.speed
 
-        val deadEnemies =
-            mutableSetOf<Enemy>()
+            if (enemy.y > height + 80f) {
+                enemyIterator.remove()
+                lives--
 
-        val usedBullets =
-            mutableSetOf<Bullet>()
-
-        enemies.forEach { enemy ->
-
-            if (enemy.y > 0.94f) {
-
-                deadEnemies.add(enemy)
-
-                health--
-
-                if (health <= 0) {
+                if (lives <= 0) {
                     gameOver = true
                 }
 
-            } else {
+                continue
+            }
 
-                bullets.forEach { bullet ->
+            // Enemy-player collision
+            val dx = enemy.x - playerX
+            val dy = enemy.y - playerY
 
-                    val distance =
-                        abs(enemy.x - bullet.x) +
-                                abs(enemy.y - bullet.y)
+            if (dx * dx + dy * dy <
+                (enemy.radius + 35f) * (enemy.radius + 35f)
+            ) {
+                explosions.add(
+                    Explosion(enemy.x, enemy.y)
+                )
 
-                    if (distance < 0.07f) {
+                enemyIterator.remove()
+                lives--
 
-                        deadEnemies.add(enemy)
-
-                        usedBullets.add(bullet)
-
-                        explosions.add(
-                            Explosion(
-                                enemy.x,
-                                enemy.y
-                            )
-                        )
-
-                        score += 10
-                    }
+                if (lives <= 0) {
+                    gameOver = true
                 }
             }
         }
 
-        enemies.removeAll(
-            deadEnemies
-        )
+        // Bullet-enemy collisions
+        val bulletsToRemove = mutableSetOf<Bullet>()
+        val enemiesToRemove = mutableSetOf<Enemy>()
 
-        bullets.removeAll(
-            usedBullets
-        )
+        for (bullet in bullets) {
+            for (enemy in enemies) {
+
+                val dx = bullet.x - enemy.x
+                val dy = bullet.y - enemy.y
+
+                if (dx * dx + dy * dy <
+                    enemy.radius * enemy.radius
+                ) {
+                    bulletsToRemove.add(bullet)
+                    enemiesToRemove.add(enemy)
+
+                    explosions.add(
+                        Explosion(enemy.x, enemy.y)
+                    )
+
+                    score += 10
+                }
+            }
+        }
+
+        bullets.removeAll(bulletsToRemove)
+        enemies.removeAll(enemiesToRemove)
+
+        // Update explosions
+        val explosionIterator = explosions.iterator()
+
+        while (explosionIterator.hasNext()) {
+            val explosion = explosionIterator.next()
+
+            explosion.radius += 5f
+            explosion.alpha -= 15
+
+            if (explosion.alpha <= 0) {
+                explosionIterator.remove()
+            }
+        }
     }
 
-    override fun onTouchEvent(
-        event: MotionEvent
-    ): Boolean {
+    override fun onTouchEvent(event: MotionEvent): Boolean {
 
         when (event.action) {
 
             MotionEvent.ACTION_DOWN -> {
 
                 if (gameOver) {
-
-                    gameOver = false
-                    score = 0
-                    health = 3
-
-                    enemies.clear()
-                    bullets.clear()
-                    explosions.clear()
+                    restartGame()
+                    return true
                 }
 
-                dragging = true
-
-                playerX =
-                    (event.x / width)
-                        .coerceIn(
-                            0.08f,
-                            0.92f
-                        )
+                lastTouchX = event.x
+                lastTouchY = event.y
 
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
 
-                if (dragging) {
+                val dx = event.x - lastTouchX
+                val dy = event.y - lastTouchY
 
-                    playerX =
-                        (event.x / width)
-                            .coerceIn(
-                                0.08f,
-                                0.92f
-                            )
-                }
+                playerX += dx
+                playerY += dy
 
-                return true
-            }
+                playerX = playerX.coerceIn(50f, width - 50f)
+                playerY = playerY.coerceIn(
+                    height * 0.45f,
+                    height - 80f
+                )
 
-            MotionEvent.ACTION_UP -> {
-
-                dragging = false
+                lastTouchX = event.x
+                lastTouchY = event.y
 
                 return true
             }
@@ -584,4 +437,41 @@ class GameView(context: Context) : View(context) {
 
         return true
     }
+
+    private fun restartGame() {
+        score = 0
+        lives = 3
+        bullets.clear()
+        enemies.clear()
+        explosions.clear()
+        gameOver = false
+
+        playerX = width / 2f
+        playerY = height * 0.82f
+    }
+
+    private data class Bullet(
+        var x: Float,
+        var y: Float
+    )
+
+    private data class Enemy(
+        var x: Float,
+        var y: Float,
+        var radius: Float,
+        var speed: Float
+    )
+
+    private data class Star(
+        val x: Float,
+        val y: Float,
+        val size: Float
+    )
+
+    private data class Explosion(
+        var x: Float,
+        var y: Float,
+        var radius: Float = 10f,
+        var alpha: Int = 255
+    )
 }
