@@ -1,4 +1,4 @@
-package pratikmardi.galaxystrike
+package com.pratikmardi.galaxystrike
 
 import android.content.Context
 import android.graphics.*
