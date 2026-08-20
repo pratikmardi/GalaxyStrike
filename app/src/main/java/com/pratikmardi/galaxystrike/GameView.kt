@@ -17,16 +17,23 @@ class GameView(context: Context) : View(context) {
     private var initialized = false
 
     private var score = 0
+    private var wave = 1
 
-    // --------------------------------------------------
-    // DATA
-    // --------------------------------------------------
+    private var lastSpawnTime = 0L
+    private var lastShotTime = 0L
+    private var lastBossShotTime = 0L
+    private var lastFrameTime = System.currentTimeMillis()
 
-    private enum class EnemyType {
-        SCOUT,
-        FIGHTER,
-        TANK
-    }
+    private var bossActive = false
+    private var bossEntering = false
+    private var bossDefeatedMessage = 0f
+
+    private var bossX = 0f
+    private var bossY = -250f
+    private var bossHealth = 100
+    private val bossMaxHealth = 100
+    private var bossDirection = 1f
+    private var bossHitFlash = 0f
 
     private data class Star(
         var x: Float,
@@ -35,6 +42,12 @@ class GameView(context: Context) : View(context) {
         var size: Float,
         var alpha: Int
     )
+
+    private enum class EnemyType {
+        SCOUT,
+        FIGHTER,
+        TANK
+    }
 
     private data class Enemy(
         var x: Float,
@@ -49,13 +62,15 @@ class GameView(context: Context) : View(context) {
     private data class Bullet(
         var x: Float,
         var y: Float,
-        var speed: Float
+        var speed: Float,
+        var enemyBullet: Boolean = false
     )
 
     private data class Explosion(
         var x: Float,
         var y: Float,
-        var age: Float = 0f
+        var age: Float = 0f,
+        var size: Float = 1f
     )
 
     private data class ShootingStar(
@@ -66,28 +81,11 @@ class GameView(context: Context) : View(context) {
         var life: Float = 0f
     )
 
-    // --------------------------------------------------
-    // OBJECTS
-    // --------------------------------------------------
-
     private val stars = mutableListOf<Star>()
     private val enemies = mutableListOf<Enemy>()
     private val bullets = mutableListOf<Bullet>()
     private val explosions = mutableListOf<Explosion>()
     private val shootingStars = mutableListOf<ShootingStar>()
-
-    // --------------------------------------------------
-    // TIMERS
-    // --------------------------------------------------
-
-    private var lastSpawnTime = 0L
-    private var lastShotTime = 0L
-    private var lastShootingStarTime = 0L
-    private var lastFrameTime = System.currentTimeMillis()
-
-    // --------------------------------------------------
-    // PLAYER IMAGE
-    // --------------------------------------------------
 
     private val playerShip: Bitmap =
         BitmapFactory.decodeResource(
@@ -99,39 +97,36 @@ class GameView(context: Context) : View(context) {
             )
         )
 
-    // --------------------------------------------------
-    // INITIALIZATION
-    // --------------------------------------------------
+    private val bossShip: Bitmap =
+        BitmapFactory.decodeResource(
+            resources,
+            resources.getIdentifier(
+                "boss_ship",
+                "drawable",
+                context.packageName
+            )
+        )
 
     init {
 
         repeat(180) {
-
             stars.add(
                 Star(
                     x = Random.nextFloat(),
                     y = Random.nextFloat(),
-                    speed =
-                        Random.nextFloat() * 2.8f + 0.4f,
-                    size =
-                        Random.nextFloat() * 2.8f + 0.4f,
-                    alpha =
-                        Random.nextInt(90, 256)
+                    speed = Random.nextFloat() * 2.8f + 0.4f,
+                    size = Random.nextFloat() * 2.8f + 0.4f,
+                    alpha = Random.nextInt(90, 256)
                 )
             )
         }
     }
 
-    // --------------------------------------------------
-    // MAIN GAME LOOP
-    // --------------------------------------------------
-
     override fun onDraw(canvas: Canvas) {
 
         super.onDraw(canvas)
 
-        val currentTime =
-            System.currentTimeMillis()
+        val currentTime = System.currentTimeMillis()
 
         val delta =
             ((currentTime - lastFrameTime)
@@ -157,69 +152,65 @@ class GameView(context: Context) : View(context) {
             currentTime
         )
 
+        updateBossMessage(delta)
+
         drawHUD(canvas)
 
-        // --------------------------------------------------
-        // DIFFICULTY
-        // --------------------------------------------------
+        // -----------------------------
+        // BOSS SYSTEM
+        // -----------------------------
 
-        val difficulty =
-            1f + (score / 3000f).coerceAtMost(2.5f)
+        if (!bossActive && score >= wave * 3000) {
 
-        // --------------------------------------------------
-        // ENEMY SPAWNING
-        // --------------------------------------------------
-
-        val spawnDelay =
-            (950f / difficulty)
-                .toLong()
-                .coerceAtLeast(350L)
-
-        if (currentTime - lastSpawnTime >
-            spawnDelay) {
-
-            spawnEnemy(difficulty)
-
-            lastSpawnTime =
-                currentTime
+            startBoss()
         }
 
-        // --------------------------------------------------
-        // ENEMIES
-        // --------------------------------------------------
+        if (bossActive) {
 
-        updateEnemies(
-            canvas,
-            delta
-        )
+            updateBoss(
+                canvas,
+                delta,
+                currentTime
+            )
 
-        // --------------------------------------------------
-        // BULLETS
-        // --------------------------------------------------
+        } else {
+
+            val difficulty =
+                1f +
+                    (score / 3000f)
+                        .coerceAtMost(3f)
+
+            val spawnDelay =
+                (950f / difficulty)
+                    .toLong()
+                    .coerceAtLeast(350L)
+
+            if (currentTime - lastSpawnTime >
+                spawnDelay) {
+
+                spawnEnemy(difficulty)
+
+                lastSpawnTime =
+                    currentTime
+            }
+
+            updateEnemies(
+                canvas,
+                delta
+            )
+        }
 
         updateBullets(
             canvas,
             delta
         )
 
-        // --------------------------------------------------
-        // COLLISIONS
-        // --------------------------------------------------
-
         handleCollisions()
-
-        // --------------------------------------------------
-        // EXPLOSIONS
-        // --------------------------------------------------
 
         updateExplosions(
             canvas,
             delta
         )
-
-        // --------------------------------------------------
-        // PLAYER
-        // --------------------------------------------------
 
         drawPlayerShip(
             canvas,
@@ -230,9 +221,9 @@ class GameView(context: Context) : View(context) {
         postInvalidateOnAnimation()
     }
 
-    // ==================================================
+    // =================================================
     // BACKGROUND
-    // ==================================================
+    // =================================================
 
     private fun drawSpaceBackground(
         canvas: Canvas
@@ -316,9 +307,9 @@ class GameView(context: Context) : View(context) {
         paint.shader = null
     }
 
-    // ==================================================
+    // =================================================
     // STARS
-    // ==================================================
+    // =================================================
 
     private fun drawStars(
         canvas: Canvas,
@@ -329,8 +320,8 @@ class GameView(context: Context) : View(context) {
 
             star.y +=
                 star.speed *
-                delta /
-                height.toFloat()
+                    delta /
+                    height.toFloat()
 
             if (star.y > 1f) {
 
@@ -358,9 +349,9 @@ class GameView(context: Context) : View(context) {
         }
     }
 
-    // ==================================================
+    // =================================================
     // SHOOTING STARS
-    // ==================================================
+    // =================================================
 
     private fun updateShootingStars(
         canvas: Canvas,
@@ -369,29 +360,24 @@ class GameView(context: Context) : View(context) {
     ) {
 
         if (currentTime -
-            lastShootingStarTime > 5000) {
+            lastBossShotTime > 5000) {
 
             if (Random.nextFloat() < 0.35f) {
 
                 shootingStars.add(
                     ShootingStar(
-                        x =
-                            Random.nextFloat() *
-                                width,
-                        y =
-                            Random.nextFloat() *
-                                height * 0.45f,
-                        speed =
-                            Random.nextFloat() *
-                                12f + 10f,
-                        length =
-                            Random.nextFloat() *
-                                70f + 50f
+                        x = Random.nextFloat() * width,
+                        y = Random.nextFloat() *
+                            height * 0.45f,
+                        speed = Random.nextFloat() *
+                            12f + 10f,
+                        length = Random.nextFloat() *
+                            70f + 50f
                     )
                 )
             }
 
-            lastShootingStarTime =
+            lastBossShotTime =
                 currentTime
         }
 
@@ -410,8 +396,8 @@ class GameView(context: Context) : View(context) {
 
             star.y +=
                 star.speed *
-                0.35f *
-                delta
+                    0.35f *
+                    delta
 
             paint.style =
                 Paint.Style.STROKE
@@ -436,8 +422,7 @@ class GameView(context: Context) : View(context) {
             canvas.drawLine(
                 star.x,
                 star.y,
-                star.x -
-                    star.length,
+                star.x - star.length,
                 star.y -
                     star.length * 0.35f,
                 paint
@@ -455,9 +440,333 @@ class GameView(context: Context) : View(context) {
             Paint.Style.FILL
     }
 
-    // ==================================================
-    // SPAWN ENEMY
-    // ==================================================
+    // =================================================
+    // BOSS START
+    // =================================================
+
+    private fun startBoss() {
+
+        bossActive = true
+        bossEntering = true
+
+        bossX = width / 2f
+        bossY = -250f
+
+        bossHealth = bossMaxHealth
+
+        bossDirection = 1f
+
+        enemies.clear()
+        bullets.removeAll {
+            it.enemyBullet
+        }
+    }
+
+    // =================================================
+    // BOSS UPDATE
+    // =================================================
+
+    private fun updateBoss(
+        canvas: Canvas,
+        delta: Float,
+        currentTime: Long
+    ) {
+
+        if (bossEntering) {
+
+            bossY +=
+                5f * delta
+
+            if (bossY >= 170f) {
+
+                bossY = 170f
+                bossEntering = false
+            }
+
+        } else {
+
+            bossX +=
+                bossDirection *
+                    4f *
+                    delta
+
+            if (bossX > width - 180f) {
+
+                bossDirection = -1f
+            }
+
+            if (bossX < 180f) {
+
+                bossDirection = 1f
+            }
+
+            // Boss firing
+
+            if (currentTime -
+                lastBossShotTime > 850) {
+
+                bullets.add(
+                    Bullet(
+                        x = bossX,
+                        y = bossY + 90f,
+                        speed = -9f,
+                        enemyBullet = true
+                    )
+                )
+
+                lastBossShotTime =
+                    currentTime
+            }
+        }
+
+        if (bossHitFlash > 0f) {
+
+            bossHitFlash -= delta
+        }
+
+        drawBoss(
+            canvas
+        )
+
+        drawBossHealthBar(
+            canvas
+        )
+
+        if (bossEntering) {
+
+            drawBossWarning(
+                canvas
+            )
+        }
+
+        if (bossDefeatedMessage > 0f) {
+
+            bossDefeatedMessage -= delta
+
+            drawBossDefeated(
+                canvas
+            )
+        }
+    }
+
+    // =================================================
+    // DRAW BOSS
+    // =================================================
+
+    private fun drawBoss(
+        canvas: Canvas
+    ) {
+
+        val bossWidth = 300f
+
+        val scale =
+            bossWidth /
+                bossShip.width.toFloat()
+
+        val bossHeight =
+            bossShip.height *
+                scale
+
+        val destination =
+            RectF(
+                bossX -
+                    bossWidth / 2f,
+                bossY -
+                    bossHeight / 2f,
+                bossX +
+                    bossWidth / 2f,
+                bossY +
+                    bossHeight / 2f
+            )
+
+        paint.alpha = 255
+        paint.isFilterBitmap = true
+
+        canvas.drawBitmap(
+            bossShip,
+            null,
+            destination,
+            paint
+        )
+
+        if (bossHitFlash > 0f) {
+
+            paint.color =
+                Color.argb(
+                    130,
+                    255,
+                    255,
+                    255
+                )
+
+            canvas.drawCircle(
+                bossX,
+                bossY,
+                150f,
+                paint
+            )
+        }
+    }
+
+    // =================================================
+    // BOSS HEALTH BAR
+    // =================================================
+
+    private fun drawBossHealthBar(
+        canvas: Canvas
+    ) {
+
+        if (bossEntering) {
+            return
+        }
+
+        val barWidth =
+            width * 0.72f
+
+        val left =
+            (width - barWidth) / 2f
+
+        val top = 95f
+
+        paint.color =
+            Color.DKGRAY
+
+        canvas.drawRoundRect(
+            left,
+            top,
+            left + barWidth,
+            top + 22f,
+            10f,
+            10f,
+            paint
+        )
+
+        val health =
+            bossHealth.toFloat() /
+                bossMaxHealth
+
+        paint.color =
+            Color.RED
+
+        canvas.drawRoundRect(
+            left,
+            top,
+            left +
+                barWidth *
+                health,
+            top + 22f,
+            10f,
+            10f,
+            paint
+        )
+
+        paint.color =
+            Color.WHITE
+
+        paint.textSize = 28f
+        paint.typeface =
+            Typeface.DEFAULT_BOLD
+
+        paint.textAlign =
+            Paint.Align.CENTER
+
+        canvas.drawText(
+            "BOSS",
+            width / 2f,
+            top - 10f,
+            paint
+        )
+
+        paint.textAlign =
+            Paint.Align.LEFT
+    }
+
+    // =================================================
+    // BOSS WARNING
+    // =================================================
+
+    private fun drawBossWarning(
+        canvas: Canvas
+    ) {
+
+        paint.color =
+            Color.argb(
+                180,
+                120,
+                0,
+                0
+            )
+
+        canvas.drawRect(
+            0f,
+            height * 0.42f,
+            width.toFloat(),
+            height * 0.58f,
+            paint
+        )
+
+        paint.color =
+            Color.WHITE
+
+        paint.textSize = 52f
+        paint.typeface =
+            Typeface.DEFAULT_BOLD
+
+        paint.textAlign =
+            Paint.Align.CENTER
+
+        canvas.drawText(
+            "⚠ BOSS INCOMING ⚠",
+            width / 2f,
+            height * 0.52f,
+            paint
+        )
+
+        paint.textAlign =
+            Paint.Align.LEFT
+    }
+
+    // =================================================
+    // BOSS DEFEATED
+    // =================================================
+
+    private fun drawBossDefeated(
+        canvas: Canvas
+    ) {
+
+        paint.color =
+            Color.WHITE
+
+        paint.textSize = 48f
+        paint.typeface =
+            Typeface.DEFAULT_BOLD
+
+        paint.textAlign =
+            Paint.Align.CENTER
+
+        canvas.drawText(
+            "BOSS DESTROYED!",
+            width / 2f,
+            height * 0.48f,
+            paint
+        )
+
+        paint.textSize = 32f
+
+        canvas.drawText(
+            "+5000",
+            width / 2f,
+            height * 0.54f,
+            paint
+        )
+
+        paint.textAlign =
+            Paint.Align.LEFT
+    }
+
+    // =================================================
+    // ENEMIES
+    // =================================================
 
     private fun spawnEnemy(
         difficulty: Float
@@ -474,26 +783,21 @@ class GameView(context: Context) : View(context) {
         val roll =
             Random.nextFloat()
 
-        val type: EnemyType
+        val type =
+            if (roll < 0.55f) {
 
-        if (roll < 0.55f) {
-
-            type =
                 EnemyType.SCOUT
 
-        } else if (roll < 0.88f) {
+            } else if (roll < 0.88f) {
 
-            type =
                 EnemyType.FIGHTER
 
-        } else {
+            } else {
 
-            type =
                 EnemyType.TANK
-        }
+            }
 
         val health: Int
-
         val speed: Float
 
         when (type) {
@@ -504,8 +808,7 @@ class GameView(context: Context) : View(context) {
 
                 speed =
                     Random.nextFloat() *
-                        3f +
-                        7f
+                        3f + 7f
             }
 
             EnemyType.FIGHTER -> {
@@ -514,8 +817,7 @@ class GameView(context: Context) : View(context) {
 
                 speed =
                     Random.nextFloat() *
-                        2.5f +
-                        4.5f
+                        2.5f + 4.5f
             }
 
             EnemyType.TANK -> {
@@ -524,8 +826,7 @@ class GameView(context: Context) : View(context) {
 
                 speed =
                     Random.nextFloat() *
-                        1.5f +
-                        2.5f
+                        1.5f + 2.5f
             }
         }
 
@@ -548,10 +849,6 @@ class GameView(context: Context) : View(context) {
         )
     }
 
-    // ==================================================
-    // UPDATE ENEMIES
-    // ==================================================
-
     private fun updateEnemies(
         canvas: Canvas,
         delta: Float
@@ -566,11 +863,9 @@ class GameView(context: Context) : View(context) {
                 iterator.next()
 
             enemy.y +=
-                enemy.speed *
-                delta
+                enemy.speed * delta
 
             if (enemy.hitFlash > 0f) {
-
                 enemy.hitFlash -= delta
             }
 
@@ -587,9 +882,9 @@ class GameView(context: Context) : View(context) {
         }
     }
 
-    // ==================================================
+    // =================================================
     // DRAW ENEMY
-    // ==================================================
+    // =================================================
 
     private fun drawEnemy(
         canvas: Canvas,
@@ -599,15 +894,10 @@ class GameView(context: Context) : View(context) {
         val x = enemy.x
         val y = enemy.y
 
-        paint.shader = null
         paint.style =
             Paint.Style.FILL
 
         when (enemy.type) {
-
-            // ------------------------------------------
-            // SCOUT
-            // ------------------------------------------
 
             EnemyType.SCOUT -> {
 
@@ -658,10 +948,6 @@ class GameView(context: Context) : View(context) {
                     paint
                 )
             }
-
-            // ------------------------------------------
-            // FIGHTER
-            // ------------------------------------------
 
             EnemyType.FIGHTER -> {
 
@@ -723,10 +1009,6 @@ class GameView(context: Context) : View(context) {
                 )
             }
 
-            // ------------------------------------------
-            // TANK
-            // ------------------------------------------
-
             EnemyType.TANK -> {
 
                 paint.color =
@@ -775,52 +1057,18 @@ class GameView(context: Context) : View(context) {
             }
         }
 
-        // --------------------------------------------------
-        // HIT FLASH
-        // --------------------------------------------------
-
         if (enemy.hitFlash > 0f) {
 
             paint.color =
                 Color.WHITE
 
-            when (enemy.type) {
-
-                EnemyType.SCOUT -> {
-
-                    canvas.drawCircle(
-                        x,
-                        y,
-                        40f,
-                        paint
-                    )
-                }
-
-                EnemyType.FIGHTER -> {
-
-                    canvas.drawCircle(
-                        x,
-                        y,
-                        48f,
-                        paint
-                    )
-                }
-
-                EnemyType.TANK -> {
-
-                    canvas.drawCircle(
-                        x,
-                        y,
-                        65f,
-                        paint
-                    )
-                }
-            }
+            canvas.drawCircle(
+                x,
+                y,
+                45f,
+                paint
+            )
         }
-
-        // --------------------------------------------------
-        // HEALTH BAR
-        // --------------------------------------------------
 
         if (enemy.health <
             enemy.maxHealth) {
@@ -828,14 +1076,9 @@ class GameView(context: Context) : View(context) {
             val barWidth =
                 when (enemy.type) {
 
-                    EnemyType.SCOUT ->
-                        50f
-
-                    EnemyType.FIGHTER ->
-                        65f
-
-                    EnemyType.TANK ->
-                        95f
+                    EnemyType.SCOUT -> 50f
+                    EnemyType.FIGHTER -> 65f
+                    EnemyType.TANK -> 95f
                 }
 
             val healthPercent =
@@ -869,9 +1112,9 @@ class GameView(context: Context) : View(context) {
         }
     }
 
-    // ==================================================
+    // =================================================
     // BULLETS
-    // ==================================================
+    // =================================================
 
     private fun updateBullets(
         canvas: Canvas,
@@ -886,19 +1129,38 @@ class GameView(context: Context) : View(context) {
             val bullet =
                 iterator.next()
 
-            bullet.y -=
-                bullet.speed *
-                delta
+            if (bullet.enemyBullet) {
 
-            drawBullet(
-                canvas,
-                bullet.x,
-                bullet.y
-            )
+                bullet.y -=
+                    bullet.speed * delta
 
-            if (bullet.y < -50f) {
+                drawEnemyBullet(
+                    canvas,
+                    bullet.x,
+                    bullet.y
+                )
 
-                iterator.remove()
+                if (bullet.y >
+                    height + 50f) {
+
+                    iterator.remove()
+                }
+
+            } else {
+
+                bullet.y -=
+                    bullet.speed * delta
+
+                drawBullet(
+                    canvas,
+                    bullet.x,
+                    bullet.y
+                )
+
+                if (bullet.y < -50f) {
+
+                    iterator.remove()
+                }
             }
         }
     }
@@ -908,9 +1170,6 @@ class GameView(context: Context) : View(context) {
         x: Float,
         y: Float
     ) {
-
-        paint.style =
-            Paint.Style.FILL
 
         paint.color =
             Color.argb(
@@ -941,9 +1200,41 @@ class GameView(context: Context) : View(context) {
         )
     }
 
-    // ==================================================
-    // COLLISION
-    // ==================================================
+    private fun drawEnemyBullet(
+        canvas: Canvas,
+        x: Float,
+        y: Float
+    ) {
+
+        paint.color =
+            Color.argb(
+                80,
+                255,
+                30,
+                30
+            )
+
+        canvas.drawCircle(
+            x,
+            y,
+            16f,
+            paint
+        )
+
+        paint.color =
+            Color.RED
+
+        canvas.drawCircle(
+            x,
+            y,
+            7f,
+            paint
+        )
+    }
+
+    // =================================================
+    // COLLISIONS
+    // =================================================
 
     private fun handleCollisions() {
 
@@ -955,6 +1246,47 @@ class GameView(context: Context) : View(context) {
 
         for (bullet in bullets) {
 
+            if (bullet.enemyBullet) {
+                continue
+            }
+
+            // Boss collision
+
+            if (bossActive &&
+                !bossEntering) {
+
+                val dx =
+                    bullet.x -
+                        bossX
+
+                val dy =
+                    bullet.y -
+                        bossY
+
+                if (dx * dx +
+                    dy * dy <
+                    150f * 150f) {
+
+                    bulletsToRemove.add(
+                        bullet
+                    )
+
+                    bossHealth--
+
+                    bossHitFlash =
+                        4f
+
+                    if (bossHealth <= 0) {
+
+                        destroyBoss()
+                    }
+
+                    continue
+                }
+            }
+
+            // Normal enemies
+
             for (enemy in enemies) {
 
                 val dx =
@@ -965,35 +1297,24 @@ class GameView(context: Context) : View(context) {
                     bullet.y -
                         enemy.y
 
-                val distanceSquared =
-                    dx * dx +
-                    dy * dy
-
-                val hitRadius =
+                val radius =
                     when (enemy.type) {
 
-                        EnemyType.SCOUT ->
-                            45f
-
-                        EnemyType.FIGHTER ->
-                            55f
-
-                        EnemyType.TANK ->
-                            70f
+                        EnemyType.SCOUT -> 45f
+                        EnemyType.FIGHTER -> 55f
+                        EnemyType.TANK -> 70f
                     }
 
-                if (distanceSquared <
-                    hitRadius *
-                    hitRadius) {
+                if (dx * dx +
+                    dy * dy <
+                    radius * radius) {
 
                     bulletsToRemove.add(
                         bullet
                     )
 
                     enemy.health--
-
-                    enemy.hitFlash =
-                        4f
+                    enemy.hitFlash = 4f
 
                     if (enemy.health <= 0) {
 
@@ -1004,14 +1325,9 @@ class GameView(context: Context) : View(context) {
                         val reward =
                             when (enemy.type) {
 
-                                EnemyType.SCOUT ->
-                                    100
-
-                                EnemyType.FIGHTER ->
-                                    250
-
-                                EnemyType.TANK ->
-                                    600
+                                EnemyType.SCOUT -> 100
+                                EnemyType.FIGHTER -> 250
+                                EnemyType.TANK -> 600
                             }
 
                         score += reward
@@ -1019,7 +1335,8 @@ class GameView(context: Context) : View(context) {
                         explosions.add(
                             Explosion(
                                 enemy.x,
-                                enemy.y
+                                enemy.y,
+                                size = 1f
                             )
                         )
                     }
@@ -1038,9 +1355,46 @@ class GameView(context: Context) : View(context) {
         )
     }
 
-    // ==================================================
+    // =================================================
+    // DESTROY BOSS
+    // =================================================
+
+    private fun destroyBoss() {
+
+        bossActive = false
+        bossEntering = false
+
+        score += 5000
+
+        wave++
+
+        bossDefeatedMessage =
+            120f
+
+        repeat(8) {
+
+            explosions.add(
+                Explosion(
+                    bossX +
+                        Random.nextFloat() *
+                        300f -
+                        150f,
+                    bossY +
+                        Random.nextFloat() *
+                        200f -
+                        100f,
+                    size =
+                        Random.nextFloat() *
+                            1.5f +
+                            1f
+                )
+            )
+        }
+    }
+
+    // =================================================
     // EXPLOSIONS
-    // ==================================================
+    // =================================================
 
     private fun updateExplosions(
         canvas: Canvas,
@@ -1062,7 +1416,7 @@ class GameView(context: Context) : View(context) {
                 explosion
             )
 
-            if (explosion.age > 24f) {
+            if (explosion.age > 28f) {
 
                 iterator.remove()
             }
@@ -1075,11 +1429,14 @@ class GameView(context: Context) : View(context) {
     ) {
 
         val progress =
-            explosion.age / 24f
+            explosion.age / 28f
 
         val radius =
-            10f +
-                progress * 75f
+            (
+                10f +
+                    progress * 80f
+                ) *
+                explosion.size
 
         val alpha =
             ((1f - progress) *
@@ -1090,21 +1447,18 @@ class GameView(context: Context) : View(context) {
                     255
                 )
 
-        paint.style =
-            Paint.Style.FILL
-
         paint.color =
             Color.argb(
                 alpha / 3,
                 255,
-                80,
+                60,
                 0
             )
 
         canvas.drawCircle(
             explosion.x,
             explosion.y,
-            radius * 1.5f,
+            radius * 1.6f,
             paint
         )
 
@@ -1112,7 +1466,7 @@ class GameView(context: Context) : View(context) {
             Color.argb(
                 alpha,
                 255,
-                100,
+                90,
                 0
             )
 
@@ -1128,7 +1482,7 @@ class GameView(context: Context) : View(context) {
                 alpha,
                 255,
                 220,
-                50
+                40
             )
 
         canvas.drawCircle(
@@ -1154,9 +1508,9 @@ class GameView(context: Context) : View(context) {
         )
     }
 
-    // ==================================================
-    // PLAYER SHIP
-    // ==================================================
+    // =================================================
+    // PLAYER
+    // =================================================
 
     private fun drawPlayerShip(
         canvas: Canvas,
@@ -1164,17 +1518,14 @@ class GameView(context: Context) : View(context) {
         y: Float
     ) {
 
-        // 20% larger than the previous 120f size
-        val targetWidth =
-            144f
+        val targetWidth = 144f
 
         val scale =
             targetWidth /
                 playerShip.width.toFloat()
 
         val targetHeight =
-            playerShip.height *
-                scale
+            playerShip.height * scale
 
         val destination =
             RectF(
@@ -1199,24 +1550,17 @@ class GameView(context: Context) : View(context) {
         )
     }
 
-    // ==================================================
+    // =================================================
     // HUD
-    // ==================================================
+    // =================================================
 
     private fun drawHUD(
         canvas: Canvas
     ) {
 
         paint.shader = null
-        paint.style =
-            Paint.Style.FILL
-
-        paint.color =
-            Color.WHITE
-
-        paint.textSize =
-            42f
-
+        paint.color = Color.WHITE
+        paint.textSize = 42f
         paint.typeface =
             Typeface.DEFAULT_BOLD
 
@@ -1240,11 +1584,34 @@ class GameView(context: Context) : View(context) {
             55f,
             paint
         )
+
+        paint.textSize = 28f
+
+        canvas.drawText(
+            "WAVE $wave",
+            30f,
+            90f,
+            paint
+        )
     }
 
-    // ==================================================
-    // SHOOTING
-    // ==================================================
+    // =================================================
+    // BOSS MESSAGE
+    // =================================================
+
+    private fun updateBossMessage(
+        delta: Float
+    ) {
+
+        if (bossDefeatedMessage > 0f) {
+
+            bossDefeatedMessage -= delta
+        }
+    }
+
+    // =================================================
+    // SHOOT
+    // =================================================
 
     private fun shoot() {
 
@@ -1262,16 +1629,16 @@ class GameView(context: Context) : View(context) {
 
         bullets.add(
             Bullet(
-                playerX,
-                playerY - 65f,
-                18f
+                x = playerX,
+                y = playerY - 65f,
+                speed = 18f
             )
         )
     }
 
-    // ==================================================
+    // =================================================
     // TOUCH
-    // ==================================================
+    // =================================================
 
     override fun onTouchEvent(
         event: MotionEvent
