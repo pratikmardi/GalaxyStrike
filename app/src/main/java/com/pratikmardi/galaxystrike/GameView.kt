@@ -16,15 +16,25 @@ class GameView(context: Context) : View(context) {
     private var playerY = 0f
     private var initialized = false
 
+    private var score = 0
+
     private data class Enemy(
         var x: Float,
         var y: Float,
         var speed: Float
     )
 
+    private data class Bullet(
+        var x: Float,
+        var y: Float,
+        var speed: Float
+    )
+
     private val enemies = mutableListOf<Enemy>()
+    private val bullets = mutableListOf<Bullet>()
 
     private var lastSpawnTime = 0L
+    private var lastShotTime = 0L
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -44,7 +54,13 @@ class GameView(context: Context) : View(context) {
         for (i in 0 until 80) {
             val x = ((i * 97) % max(width, 1)).toFloat()
             val y = ((i * 173) % max(height, 1)).toFloat()
-            canvas.drawCircle(x, y, 1.5f, paint)
+
+            canvas.drawCircle(
+                x,
+                y,
+                1.5f,
+                paint
+            )
         }
 
         // HUD
@@ -52,34 +68,107 @@ class GameView(context: Context) : View(context) {
         paint.textSize = 42f
         paint.typeface = Typeface.DEFAULT_BOLD
 
-        canvas.drawText("SCORE  000000", 30f, 55f, paint)
-        canvas.drawText("LIVES  3", width - 190f, 55f, paint)
+        canvas.drawText(
+            "SCORE  ${score.toString().padStart(6, '0')}",
+            30f,
+            55f,
+            paint
+        )
 
-        // Spawn enemies
+        canvas.drawText(
+            "LIVES  3",
+            width - 190f,
+            55f,
+            paint
+        )
+
         val currentTime = System.currentTimeMillis()
 
+        // Spawn enemies
         if (currentTime - lastSpawnTime > 900) {
             spawnEnemy()
             lastSpawnTime = currentTime
         }
 
-        // Move and draw enemies
-        val iterator = enemies.iterator()
+        // Update enemies
+        val enemyIterator = enemies.iterator()
 
-        while (iterator.hasNext()) {
-            val enemy = iterator.next()
+        while (enemyIterator.hasNext()) {
+
+            val enemy = enemyIterator.next()
 
             enemy.y += enemy.speed
 
-            drawEnemy(canvas, enemy.x, enemy.y)
+            drawEnemy(
+                canvas,
+                enemy.x,
+                enemy.y
+            )
 
             if (enemy.y > height + 100f) {
-                iterator.remove()
+                enemyIterator.remove()
             }
         }
 
-        // Player ship
-        drawPlayerShip(canvas, playerX, playerY)
+        // Update bullets
+        val bulletIterator = bullets.iterator()
+
+        while (bulletIterator.hasNext()) {
+
+            val bullet = bulletIterator.next()
+
+            bullet.y -= bullet.speed
+
+            drawBullet(
+                canvas,
+                bullet.x,
+                bullet.y
+            )
+
+            if (bullet.y < -50f) {
+                bulletIterator.remove()
+            }
+        }
+
+        // Bullet / enemy collision
+        val bulletsToRemove = mutableListOf<Bullet>()
+        val enemiesToRemove = mutableListOf<Enemy>()
+
+        for (bullet in bullets) {
+
+            for (enemy in enemies) {
+
+                val distanceX =
+                    bullet.x - enemy.x
+
+                val distanceY =
+                    bullet.y - enemy.y
+
+                val distanceSquared =
+                    distanceX * distanceX +
+                    distanceY * distanceY
+
+                if (distanceSquared < 55f * 55f) {
+
+                    bulletsToRemove.add(bullet)
+                    enemiesToRemove.add(enemy)
+
+                    score += 100
+
+                    break
+                }
+            }
+        }
+
+        bullets.removeAll(bulletsToRemove)
+        enemies.removeAll(enemiesToRemove)
+
+        // Player
+        drawPlayerShip(
+            canvas,
+            playerX,
+            playerY
+        )
 
         // Keep game running
         postInvalidateOnAnimation()
@@ -87,10 +176,16 @@ class GameView(context: Context) : View(context) {
 
     private fun spawnEnemy() {
 
-        val x = Random.nextFloat() *
-                (width.coerceAtLeast(120) - 120f) + 60f
+        val safeWidth =
+            width.coerceAtLeast(120)
 
-        val speed = Random.nextFloat() * 4f + 3f
+        val x =
+            Random.nextFloat() *
+            (safeWidth - 120f) +
+            60f
+
+        val speed =
+            Random.nextFloat() * 4f + 3f
 
         enemies.add(
             Enemy(
@@ -101,6 +196,47 @@ class GameView(context: Context) : View(context) {
         )
     }
 
+    private fun shoot() {
+
+        val currentTime =
+            System.currentTimeMillis()
+
+        // Fire rate
+        if (currentTime - lastShotTime < 180) {
+            return
+        }
+
+        lastShotTime = currentTime
+
+        bullets.add(
+            Bullet(
+                x = playerX,
+                y = playerY - 65f,
+                speed = 18f
+            )
+        )
+    }
+
+    private fun drawBullet(
+        canvas: Canvas,
+        x: Float,
+        y: Float
+    ) {
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.CYAN
+
+        canvas.drawRoundRect(
+            x - 5f,
+            y - 22f,
+            x + 5f,
+            y + 22f,
+            5f,
+            5f,
+            paint
+        )
+    }
+
     private fun drawEnemy(
         canvas: Canvas,
         x: Float,
@@ -108,28 +244,63 @@ class GameView(context: Context) : View(context) {
     ) {
 
         paint.style = Paint.Style.FILL
-
-        // Main enemy body
         paint.color = Color.RED
 
         val path = Path()
 
-        path.moveTo(x, y + 55f)
-        path.lineTo(x - 45f, y - 25f)
-        path.lineTo(x - 18f, y - 15f)
-        path.lineTo(x, y - 55f)
-        path.lineTo(x + 18f, y - 15f)
-        path.lineTo(x + 45f, y - 25f)
+        path.moveTo(
+            x,
+            y + 55f
+        )
+
+        path.lineTo(
+            x - 45f,
+            y - 25f
+        )
+
+        path.lineTo(
+            x - 18f,
+            y - 15f
+        )
+
+        path.lineTo(
+            x,
+            y - 55f
+        )
+
+        path.lineTo(
+            x + 18f,
+            y - 15f
+        )
+
+        path.lineTo(
+            x + 45f,
+            y - 25f
+        )
+
         path.close()
 
-        canvas.drawPath(path, paint)
+        canvas.drawPath(
+            path,
+            paint
+        )
 
-        // Enemy cockpit
+        // Cockpit
         paint.color = Color.YELLOW
-        canvas.drawCircle(x, y - 5f, 12f, paint)
 
-        // Enemy wings
-        paint.color = Color.rgb(180, 20, 20)
+        canvas.drawCircle(
+            x,
+            y - 5f,
+            12f,
+            paint
+        )
+
+        // Wings
+        paint.color = Color.rgb(
+            180,
+            20,
+            20
+        )
 
         canvas.drawRect(
             x - 55f,
@@ -156,22 +327,53 @@ class GameView(context: Context) : View(context) {
 
         val path = Path()
 
-        // Main spaceship
-        path.moveTo(x, y - 65f)
-        path.lineTo(x - 42f, y + 45f)
-        path.lineTo(x - 18f, y + 32f)
-        path.lineTo(x, y + 55f)
-        path.lineTo(x + 18f, y + 32f)
-        path.lineTo(x + 42f, y + 45f)
+        path.moveTo(
+            x,
+            y - 65f
+        )
+
+        path.lineTo(
+            x - 42f,
+            y + 45f
+        )
+
+        path.lineTo(
+            x - 18f,
+            y + 32f
+        )
+
+        path.lineTo(
+            x,
+            y + 55f
+        )
+
+        path.lineTo(
+            x + 18f,
+            y + 32f
+        )
+
+        path.lineTo(
+            x + 42f,
+            y + 45f
+        )
+
         path.close()
 
         paint.style = Paint.Style.FILL
-        paint.color = Color.rgb(40, 150, 255)
+        paint.color = Color.rgb(
+            40,
+            150,
+            255
+        )
 
-        canvas.drawPath(path, paint)
+        canvas.drawPath(
+            path,
+            paint
+        )
 
         // Cockpit
         paint.color = Color.CYAN
+
         canvas.drawCircle(
             x,
             y - 15f,
@@ -179,8 +381,12 @@ class GameView(context: Context) : View(context) {
             paint
         )
 
-        // Left wing
-        paint.color = Color.rgb(20, 90, 180)
+        // Wings
+        paint.color = Color.rgb(
+            20,
+            90,
+            180
+        )
 
         canvas.drawRect(
             x - 48f,
@@ -190,7 +396,6 @@ class GameView(context: Context) : View(context) {
             paint
         )
 
-        // Right wing
         canvas.drawRect(
             x + 12f,
             y + 20f,
@@ -272,6 +477,9 @@ class GameView(context: Context) : View(context) {
                         event.y
                     )
                 )
+
+                // Shoot
+                shoot()
 
                 invalidate()
 
