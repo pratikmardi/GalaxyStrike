@@ -2,6 +2,7 @@ package com.pratikmardi.galaxystrike
 
 import android.content.Context
 import android.graphics.*
+import android.graphics.drawable.BitmapDrawable
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.max
@@ -17,6 +18,16 @@ class GameView(context: Context) : View(context) {
     private var initialized = false
 
     private var score = 0
+
+    // Load the real player ship image
+    private val playerShip: Bitmap = BitmapFactory.decodeResource(
+        resources,
+        resources.getIdentifier(
+            "player_ship",
+            "drawable",
+            context.packageName
+        )
+    )
 
     private data class Enemy(
         var x: Float,
@@ -138,11 +149,8 @@ class GameView(context: Context) : View(context) {
 
             for (enemy in enemies) {
 
-                val distanceX =
-                    bullet.x - enemy.x
-
-                val distanceY =
-                    bullet.y - enemy.y
+                val distanceX = bullet.x - enemy.x
+                val distanceY = bullet.y - enemy.y
 
                 val distanceSquared =
                     distanceX * distanceX +
@@ -163,7 +171,7 @@ class GameView(context: Context) : View(context) {
         bullets.removeAll(bulletsToRemove)
         enemies.removeAll(enemiesToRemove)
 
-        // Player
+        // REAL PLAYER SHIP
         drawPlayerShip(
             canvas,
             playerX,
@@ -176,8 +184,7 @@ class GameView(context: Context) : View(context) {
 
     private fun spawnEnemy() {
 
-        val safeWidth =
-            width.coerceAtLeast(120)
+        val safeWidth = width.coerceAtLeast(120)
 
         val x =
             Random.nextFloat() *
@@ -201,7 +208,6 @@ class GameView(context: Context) : View(context) {
         val currentTime =
             System.currentTimeMillis()
 
-        // Fire rate
         if (currentTime - lastShotTime < 180) {
             return
         }
@@ -248,42 +254,15 @@ class GameView(context: Context) : View(context) {
 
         val path = Path()
 
-        path.moveTo(
-            x,
-            y + 55f
-        )
-
-        path.lineTo(
-            x - 45f,
-            y - 25f
-        )
-
-        path.lineTo(
-            x - 18f,
-            y - 15f
-        )
-
-        path.lineTo(
-            x,
-            y - 55f
-        )
-
-        path.lineTo(
-            x + 18f,
-            y - 15f
-        )
-
-        path.lineTo(
-            x + 45f,
-            y - 25f
-        )
-
+        path.moveTo(x, y + 55f)
+        path.lineTo(x - 45f, y - 25f)
+        path.lineTo(x - 18f, y - 15f)
+        path.lineTo(x, y - 55f)
+        path.lineTo(x + 18f, y - 15f)
+        path.lineTo(x + 45f, y - 25f)
         path.close()
 
-        canvas.drawPath(
-            path,
-            paint
-        )
+        canvas.drawPath(path, paint)
 
         // Cockpit
         paint.color = Color.YELLOW
@@ -296,11 +275,7 @@ class GameView(context: Context) : View(context) {
         )
 
         // Wings
-        paint.color = Color.rgb(
-            180,
-            20,
-            20
-        )
+        paint.color = Color.rgb(180, 20, 20)
 
         canvas.drawRect(
             x - 55f,
@@ -325,133 +300,41 @@ class GameView(context: Context) : View(context) {
         y: Float
     ) {
 
-        val path = Path()
+        // Desired size of the player's ship
+        val targetWidth = 120f
 
-        path.moveTo(
-            x,
-            y - 65f
+        val scale =
+            targetWidth / playerShip.width.toFloat()
+
+        val targetHeight =
+            playerShip.height * scale
+
+        val left =
+            x - targetWidth / 2f
+
+        val top =
+            y - targetHeight / 2f
+
+        val right =
+            x + targetWidth / 2f
+
+        val bottom =
+            y + targetHeight / 2f
+
+        val destination = RectF(
+            left,
+            top,
+            right,
+            bottom
         )
 
-        path.lineTo(
-            x - 42f,
-            y + 45f
-        )
+        paint.alpha = 255
+        paint.isFilterBitmap = true
 
-        path.lineTo(
-            x - 18f,
-            y + 32f
-        )
-
-        path.lineTo(
-            x,
-            y + 55f
-        )
-
-        path.lineTo(
-            x + 18f,
-            y + 32f
-        )
-
-        path.lineTo(
-            x + 42f,
-            y + 45f
-        )
-
-        path.close()
-
-        paint.style = Paint.Style.FILL
-        paint.color = Color.rgb(
-            40,
-            150,
-            255
-        )
-
-        canvas.drawPath(
-            path,
-            paint
-        )
-
-        // Cockpit
-        paint.color = Color.CYAN
-
-        canvas.drawCircle(
-            x,
-            y - 15f,
-            13f,
-            paint
-        )
-
-        // Wings
-        paint.color = Color.rgb(
-            20,
-            90,
-            180
-        )
-
-        canvas.drawRect(
-            x - 48f,
-            y + 20f,
-            x - 12f,
-            y + 38f,
-            paint
-        )
-
-        canvas.drawRect(
-            x + 12f,
-            y + 20f,
-            x + 48f,
-            y + 38f,
-            paint
-        )
-
-        // Engine flames
-        paint.color = Color.YELLOW
-
-        val flameLeft = Path()
-
-        flameLeft.moveTo(
-            x - 18f,
-            y + 45f
-        )
-
-        flameLeft.lineTo(
-            x - 8f,
-            y + 82f
-        )
-
-        flameLeft.lineTo(
-            x,
-            y + 48f
-        )
-
-        flameLeft.close()
-
-        canvas.drawPath(
-            flameLeft,
-            paint
-        )
-
-        val flameRight = Path()
-
-        flameRight.moveTo(
-            x,
-            y + 48f
-        )
-
-        flameRight.lineTo(
-            x + 8f,
-            y + 82f
-        )
-
-        flameRight.lineTo(
-            x + 18f,
-            y + 45f
-        )
-
-        flameRight.close()
-
-        canvas.drawPath(
-            flameRight,
+        canvas.drawBitmap(
+            playerShip,
+            null,
+            destination,
             paint
         )
     }
@@ -478,7 +361,6 @@ class GameView(context: Context) : View(context) {
                     )
                 )
 
-                // Shoot
                 shoot()
 
                 invalidate()
