@@ -1833,11 +1833,50 @@ enemies.removeAll(
     // TOUCH
     // =================================================
 
+private fun restartGame() {
+
+    score = 0
+    wave = 1
+    lives = 3
+
+    gameOver = false
+
+    playerInvulnerable = false
+    invulnerabilityTimer = 0f
+
+    bossActive = false
+    bossEntering = false
+    bossHealth = bossMaxHealth
+
+    enemies.clear()
+    bullets.clear()
+    explosions.clear()
+    shootingStars.clear()
+
+    playerX = width / 2f
+    playerY = height * 0.82f
+
+    lastSpawnTime =
+        System.currentTimeMillis()
+
+    lastShotTime = 0L
+    lastBossShotTime = 0L
+}
+    
     override fun onTouchEvent(
         event: MotionEvent
     ): Boolean {
 
         when (event.action) {
+            if (gameOver &&
+    event.action == MotionEvent.ACTION_DOWN) {
+
+    restartGame()
+
+    invalidate()
+
+    return true
+            }
 
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_MOVE -> {
