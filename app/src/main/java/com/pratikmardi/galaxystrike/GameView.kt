@@ -133,6 +133,16 @@ class GameView(context: Context) : View(context) {
 
         val currentTime = System.currentTimeMillis()
 
+        if (playerInvulnerable) {
+    invulnerabilityTimer -= delta
+
+    if (invulnerabilityTimer <= 0f) {
+        playerInvulnerable = false
+        invulnerabilityTimer = 0f
+    }
+        }
+        
+
         val delta =
             ((currentTime - lastFrameTime)
                 .coerceAtMost(50L)) / 16.67f
@@ -1241,6 +1251,36 @@ class GameView(context: Context) : View(context) {
     // COLLISIONS
     // =================================================
 
+    private fun damagePlayer() {
+
+    if (playerInvulnerable || gameOver) {
+        return
+    }
+
+    lives--
+
+    playerInvulnerable = true
+    invulnerabilityTimer = 90f
+
+    explosions.add(
+        Explosion(
+            playerX,
+            playerY,
+            size = 1.2f
+        )
+    )
+
+    if (lives <= 0) {
+
+        lives = 0
+        gameOver = true
+
+        bullets.clear()
+        enemies.clear()
+        bossActive = false
+    }
+    }
+
     private fun handleCollisions() {
 
         val bulletsToRemove =
@@ -1358,6 +1398,41 @@ class GameView(context: Context) : View(context) {
         enemies.removeAll(
             enemiesToRemove
         )
+        // Player / enemy collision
+
+val enemiesToRemoveOnPlayerHit =
+    mutableListOf<Enemy>()
+
+for (enemy in enemies) {
+
+    val dx =
+        playerX - enemy.x
+
+    val dy =
+        playerY - enemy.y
+
+    val distanceSquared =
+        dx * dx + dy * dy
+
+    if (distanceSquared < 95f * 95f) {
+
+        damagePlayer()
+
+        enemiesToRemoveOnPlayerHit.add(enemy)
+
+        explosions.add(
+            Explosion(
+                enemy.x,
+                enemy.y,
+                size = 1.0f
+            )
+        )
+    }
+}
+
+enemies.removeAll(
+    enemiesToRemoveOnPlayerHit
+)
     }
 
     // =================================================
