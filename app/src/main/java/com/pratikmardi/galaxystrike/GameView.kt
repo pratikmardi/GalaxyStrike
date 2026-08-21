@@ -227,13 +227,22 @@ class GameView(context: Context) : View(context) {
             delta
         )
 
-        drawPlayerShip(
-            canvas,
-            playerX,
-            playerY
-        )
+        if (!gameOver) {
 
-        postInvalidateOnAnimation()
+    drawPlayerShip(
+        canvas,
+        playerX,
+        playerY
+    )
+
+} else {
+
+    drawGameOver(
+        canvas
+    )
+}
+
+postInvalidateOnAnimation()
     }
 
     // =================================================
@@ -1283,6 +1292,40 @@ class GameView(context: Context) : View(context) {
 
     private fun handleCollisions() {
 
+        // Boss bullet / player collision
+
+val enemyBulletsToRemove =
+    mutableListOf<Bullet>()
+
+for (bullet in bullets) {
+
+    if (!bullet.enemyBullet) {
+        continue
+    }
+
+    val dx =
+        playerX - bullet.x
+
+    val dy =
+        playerY - bullet.y
+
+    val distanceSquared =
+        dx * dx + dy * dy
+
+    if (distanceSquared < 70f * 70f) {
+
+        damagePlayer()
+
+        enemyBulletsToRemove.add(
+            bullet
+        )
+    }
+}
+
+bullets.removeAll(
+    enemyBulletsToRemove
+)
+
         val bulletsToRemove =
             mutableListOf<Bullet>()
 
@@ -1628,6 +1671,76 @@ enemies.removeAll(
             destination,
             paint
         )
+
+        private fun drawGameOver(
+    canvas: Canvas
+) {
+
+    paint.color =
+        Color.argb(
+            190,
+            0,
+            0,
+            0
+        )
+
+    canvas.drawRect(
+        0f,
+        0f,
+        width.toFloat(),
+        height.toFloat(),
+        paint
+    )
+
+    paint.color =
+        Color.RED
+
+    paint.textSize = 64f
+    paint.typeface =
+        Typeface.DEFAULT_BOLD
+
+    paint.textAlign =
+        Paint.Align.CENTER
+
+    canvas.drawText(
+        "GAME OVER",
+        width / 2f,
+        height * 0.42f,
+        paint
+    )
+
+    paint.color =
+        Color.WHITE
+
+    paint.textSize = 38f
+
+    canvas.drawText(
+        "SCORE  ${
+            score
+                .toString()
+                .padStart(
+                    6,
+                    '0'
+                )
+        }",
+        width / 2f,
+        height * 0.50f,
+        paint
+    )
+
+    paint.textSize = 32f
+
+    canvas.drawText(
+        "TAP TO RESTART",
+        width / 2f,
+        height * 0.60f,
+        paint
+    )
+
+    paint.textAlign =
+        Paint.Align.LEFT
+        
+        
     }
 
     // =================================================
@@ -1659,7 +1772,7 @@ enemies.removeAll(
         )
 
         canvas.drawText(
-            "LIVES  3",
+            "LIVES  $lives",
             width - 190f,
             55f,
             paint
