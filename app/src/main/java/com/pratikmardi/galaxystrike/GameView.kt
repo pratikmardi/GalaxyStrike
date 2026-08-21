@@ -19,6 +19,11 @@ class GameView(context: Context) : View(context) {
     private var score = 0
     private var wave = 1
 
+    private var lives = 3
+    private var playerInvulnerable = false
+    private var invulnerabilityTimer = 0f
+    private var gameOver = false
+
     private var lastSpawnTime = 0L
     private var lastShotTime = 0L
     private var lastBossShotTime = 0L
