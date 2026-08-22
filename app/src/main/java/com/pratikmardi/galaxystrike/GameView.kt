@@ -133,21 +133,20 @@ class GameView(context: Context) : View(context) {
 
         val currentTime = System.currentTimeMillis()
 
-        if (playerInvulnerable) {
+val delta =
+    ((currentTime - lastFrameTime)
+        .coerceAtMost(50L)) / 16.67f
+
+lastFrameTime = currentTime
+
+if (playerInvulnerable) {
     invulnerabilityTimer -= delta
 
     if (invulnerabilityTimer <= 0f) {
         playerInvulnerable = false
         invulnerabilityTimer = 0f
     }
-        }
-        
-
-        val delta =
-            ((currentTime - lastFrameTime)
-                .coerceAtMost(50L)) / 16.67f
-
-        lastFrameTime = currentTime
+}
 
         drawSpaceBackground(canvas)
 
